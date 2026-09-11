@@ -60,6 +60,8 @@ public:
     const EventVector& timbreEvents() const noexcept { return timbreEvents_; }
     const EventVector* polyPressureEvents(int noteNumber) const noexcept;
 
+    /** Whether a timeline received an event since the last flush/reset. */
+    bool hasPendingEvents() const noexcept { return eventsDirty_; }
     void flushEvents() noexcept;
     void reset() noexcept;
 
@@ -109,6 +111,7 @@ private:
     bool pitchPresent_ { false };
     bool pressurePresent_ { false };
     bool timbrePresent_ { false };
+    bool eventsDirty_ { false };
 
     size_t eventsPerTimeline_ { 1 };
     uint64_t overflowCount_ { 0 };

@@ -51,6 +51,7 @@ void ExpressionContext::configure(size_t controllerSlots,
     seedTimeline(pressureEvents_, eventsPerTimeline_, pressureValue_);
     seedTimeline(timbreEvents_, eventsPerTimeline_, timbreValue_);
     overflowCount_ = 0;
+    eventsDirty_ = false;
 }
 
 void ExpressionContext::setTimelineEventCapacity(size_t eventsPerTimeline)
@@ -63,6 +64,7 @@ void ExpressionContext::setTimelineEventCapacity(size_t eventsPerTimeline)
     seedTimeline(pitchEvents_, eventsPerTimeline_, pitchValue_);
     seedTimeline(pressureEvents_, eventsPerTimeline_, pressureValue_);
     seedTimeline(timbreEvents_, eventsPerTimeline_, timbreValue_);
+    eventsDirty_ = false;
 }
 
 void ExpressionContext::configureSfizzControllers(
@@ -102,6 +104,7 @@ void ExpressionContext::configureSfizzControllers(
         seedTimeline(slot.events, eventsPerTimeline_, slot.value);
         ++slotIndex;
     }
+    eventsDirty_ = false;
 }
 
 bool ExpressionContext::insertEvent(EventVector& events, int delay, float value) noexcept
@@ -110,6 +113,7 @@ bool ExpressionContext::insertEvent(EventVector& events, int delay, float value)
         events, delay, MidiEventDelayComparator { });
     if (insertionPoint != events.end() && insertionPoint->delay == delay) {
         insertionPoint->value = value;
+        eventsDirty_ = true;
         return true;
     }
     if (events.size() >= events.capacity()) {
@@ -117,6 +121,7 @@ bool ExpressionContext::insertEvent(EventVector& events, int delay, float value)
         return false;
     }
     events.insert(insertionPoint, { delay, value });
+    eventsDirty_ = true;
     return true;
 }
 
@@ -307,9 +312,14 @@ const EventVector* ExpressionContext::polyPressureEvents(
 
 void ExpressionContext::flushEvents() noexcept
 {
+    if (!eventsDirty_)
+        return;
+
     auto flush = [](EventVector& events) {
-        events.front() = { 0, events.back().value };
-        events.resize(1);
+        if (events.size() > 1) {
+            events.front() = { 0, events.back().value };
+            events.resize(1);
+        }
     };
     for (ControllerSlot& slot : controllerSlots_) {
         if (slot.assigned)
@@ -322,6 +332,7 @@ void ExpressionContext::flushEvents() noexcept
     flush(pitchEvents_);
     flush(pressureEvents_);
     flush(timbreEvents_);
+    eventsDirty_ = false;
 }
 
 void ExpressionContext::reset() noexcept
@@ -352,6 +363,7 @@ void ExpressionContext::reset() noexcept
     resetTimeline(pitchEvents_, 0.0f);
     resetTimeline(pressureEvents_, 0.0f);
     resetTimeline(timbreEvents_, 0.0f);
+    eventsDirty_ = false;
 }
 
 size_t ExpressionContext::configuredControllerCount() const noexcept

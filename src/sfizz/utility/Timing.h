@@ -41,6 +41,10 @@ struct ScopedTiming
      * @param targetDuration
      * @param op
      */
+#if defined(SFIZZ_DISABLE_TIMING)
+    ScopedTiming(double&, Operation = Operation::replaceDuration) noexcept {}
+    ~ScopedTiming() = default;
+#else
     ScopedTiming(double& targetDuration, Operation op = Operation::replaceDuration)
     : targetDuration(targetDuration), operation(op) {}
     ~ScopedTiming()
@@ -59,6 +63,7 @@ struct ScopedTiming
     double& targetDuration;
     const Operation operation;
     const TimePoint creationTime { highResNow() };
+#endif
 };
 
 }

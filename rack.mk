@@ -47,6 +47,10 @@ endif
 SFIZZ_BUILD_DIR := $(SFIZZ_RACK_PLUGIN_DIR)/build/sfizz
 include $(SFIZZ_DIR)/common.mk
 
+ifeq ($(SFIZZ_DISABLE_TIMING),1)
+SFIZZ_CXX_FLAGS += -DSFIZZ_DISABLE_TIMING=1
+endif
+
 ###
 
 SFIZZ_TARGET := $(SFIZZ_BUILD_DIR)/libsfizz.a

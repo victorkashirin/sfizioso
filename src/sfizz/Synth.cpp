@@ -1202,32 +1202,37 @@ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
     { // Main render block
         ScopedTiming logger { callbackBreakdown.renderMethod, ScopedTiming::Operation::addToDuration };
 
-        for (auto& voice : impl.voiceManager_) {
-            if (voice.isFree())
-                continue;
+        // The allocated pool can be much larger than the active polyphony.
+        // Avoid walking every free voice on the common fully-idle path. Effect
+        // buses are deliberately still processed below so their tails survive.
+        if (impl.voiceManager_.getNumActiveVoices() > 0) {
+            for (auto& voice : impl.voiceManager_) {
+                if (voice.isFree())
+                    continue;
 
-            mm.beginVoice(voice.getId(), voice.getRegion()->getId(), voice.getTriggerEvent().value);
+                mm.beginVoice(voice.getId(), voice.getRegion()->getId(), voice.getTriggerEvent().value);
 
-            const Region* region = voice.getRegion();
-            ASSERT(region != nullptr);
-            const auto& effectBuses = impl.getEffectBusesForOutput(region->output);
+                const Region* region = voice.getRegion();
+                ASSERT(region != nullptr);
+                const auto& effectBuses = impl.getEffectBusesForOutput(region->output);
 
-            voice.renderBlock(*tempSpan);
-            for (size_t i = 0, n = effectBuses.size(); i < n; ++i) {
-                if (auto& bus = effectBuses[i]) {
-                    float addGain = region->getGainToEffectBus(i);
-                    bus->addToInputs(*tempSpan, addGain, numFrames);
+                voice.renderBlock(*tempSpan);
+                for (size_t i = 0, n = effectBuses.size(); i < n; ++i) {
+                    if (auto& bus = effectBuses[i]) {
+                        float addGain = region->getGainToEffectBus(i);
+                        bus->addToInputs(*tempSpan, addGain, numFrames);
+                    }
                 }
+                callbackBreakdown.data += voice.getLastDataDuration();
+                callbackBreakdown.amplitude += voice.getLastAmplitudeDuration();
+                callbackBreakdown.filters += voice.getLastFilterDuration();
+                callbackBreakdown.panning += voice.getLastPanningDuration();
+
+                mm.endVoice();
+
+                if (voice.toBeCleanedUp())
+                    voice.reset();
             }
-            callbackBreakdown.data += voice.getLastDataDuration();
-            callbackBreakdown.amplitude += voice.getLastAmplitudeDuration();
-            callbackBreakdown.filters += voice.getLastFilterDuration();
-            callbackBreakdown.panning += voice.getLastPanningDuration();
-
-            mm.endVoice();
-
-            if (voice.toBeCleanedUp())
-                voice.reset();
         }
     }
 

@@ -221,8 +221,12 @@ void sfz::MidiState::flushEvents() noexcept
     lowerZoneExpressionContext_.flushEvents();
     for (ExpressionContext& context : channelExpressionContexts_)
         context.flushEvents();
-    for (NoteExpressionSlot& slot : noteExpressionSlots_)
-        slot.context.flushEvents();
+    for (NoteExpressionSlot& slot : noteExpressionSlots_) {
+        // Inactive note slots make up most of this pool. A slot can become
+        // inactive during a block, so also flush it when it still owns events.
+        if (slot.active || slot.context.hasPendingEvents())
+            slot.context.flushEvents();
+    }
 }
 
 void sfz::MidiState::setSamplesPerBlock(int samplesPerBlock) noexcept

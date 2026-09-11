@@ -913,7 +913,11 @@ void Voice::renderBlock(AudioSpan<float, 2> buffer) noexcept
             impl.switchState(State::cleanMeUp);
     }
 
-    impl.powerFollower_.process(buffer);
+    // The default oldest-voice stealing policy does not use signal power.
+    // Avoid an otherwise unconditional copy and sum-of-squares pass. Enabling
+    // the envelope-and-age policy clears the follower before it is used.
+    if (impl.followPower_)
+        impl.powerFollower_.process(buffer);
 
     for (auto* snapshot : { &impl.releasedNotePitch_, &impl.releasedNotePressure_, &impl.releasedNoteTimbre_ }) {
         if (!snapshot->empty()) {
@@ -1019,6 +1023,12 @@ void Voice::Impl::resetCrossfades() noexcept
 
 void Voice::Impl::applyCrossfades(absl::Span<float> modulationSpan) noexcept
 {
+    // With no xfin/xfout opcodes resetCrossfades() fixes the smoother at unity,
+    // so allocating and processing two temporary buffers cannot change audio.
+    if (region_->crossfadeCCInRange.empty()
+        && region_->crossfadeCCOutRange.empty())
+        return;
+
     const auto numSamples = modulationSpan.size();
     const auto xfCurve = region_->crossfadeCCCurve;
 
@@ -1127,18 +1137,29 @@ void Voice::Impl::panStageMono(AudioSpan<float> buffer) noexcept
     const auto leftBuffer = buffer.getSpan(0);
     const auto rightBuffer = buffer.getSpan(1);
 
-    BufferPool& bufferPool = resources_.getBufferPool();
-
-    auto modulationSpan = bufferPool.getBuffer(numSamples);
-    if (!modulationSpan)
-        return;
-
     ModMatrix& mm = resources_.getModMatrix();
 
     // Prepare for stereo output
     copy<float>(leftBuffer, rightBuffer);
 
     // Apply panning
+    if (!mm.validTarget(panTarget_)) {
+        const float normalizedPan = clamp(
+            (region_->pan + 1.0f) * 0.5f, 0.0f, 1.0f);
+        applyGain1(panLookup(normalizedPan), leftBuffer);
+        applyGain1(panLookup(1.0f - normalizedPan), rightBuffer);
+
+        // add +3dB (10^(3/20)) to compensate for the pan stage
+        applyGain1(1.4125375446227544f, leftBuffer);
+        applyGain1(1.4125375446227544f, rightBuffer);
+        return;
+    }
+
+    BufferPool& bufferPool = resources_.getBufferPool();
+    auto modulationSpan = bufferPool.getBuffer(numSamples);
+    if (!modulationSpan)
+        return;
+
     fill(*modulationSpan, region_->pan);
     if (float* mod = mm.getModulation(panTarget_)) {
         for (size_t i = 0; i < numSamples; ++i)
@@ -1265,8 +1286,17 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
         pitchEnvelope(pitch);
 
         float baseRatio = pitchRatio_ * speedRatio_;
-        for (size_t i = 0; i < numSamples; ++i)
-            (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
+        const float firstPitch = pitch.front();
+        const bool constantPitch = std::all_of(
+            pitch.begin() + 1, pitch.end(),
+            [firstPitch](float value) { return value == firstPitch; });
+        if (constantPitch) {
+            fill<float>(*jumps, baseRatio * centsFactor(firstPitch));
+        }
+        else {
+            for (size_t i = 0; i < numSamples; ++i)
+                (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
+        }
 
         // Take the first sample if the voice just started
         if (age_ == 0)

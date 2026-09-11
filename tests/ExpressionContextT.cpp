@@ -96,6 +96,45 @@ TEST_CASE("[Expression] Timeline overflow is bounded counted and deterministic")
     REQUIRE(events->back().value == 0.25f);
 }
 
+TEST_CASE("[Expression] Timeline flushing only becomes pending after timeline writes")
+{
+    sfz::ExpressionContext context;
+    context.configure(/*controllerSlots=*/0, /*polyPressureSlots=*/1,
+        /*eventsPerTimeline=*/8);
+
+    REQUIRE_FALSE(context.hasPendingEvents());
+    context.flushEvents();
+    REQUIRE_FALSE(context.hasPendingEvents());
+
+    // An unconsumed controller has scalar state only, so it creates no work
+    // for the end-of-block timeline flush.
+    REQUIRE(context.controllerEvent(3, 11, 0.25f));
+    REQUIRE_FALSE(context.hasPendingEvents());
+
+    std::array<bool, sfz::config::numCCs> used { };
+    used[74] = true;
+    context.configureSfizzControllers(used);
+    REQUIRE_FALSE(context.hasPendingEvents());
+
+    REQUIRE(context.controllerEvent(4, 74, 0.5f));
+    REQUIRE(context.pressureEvent(6, 0.75f));
+    REQUIRE(context.hasPendingEvents());
+    REQUIRE(context.controllerEvents(74)->size() == 2);
+    REQUIRE(context.pressureEvents().size() == 2);
+
+    context.flushEvents();
+    REQUIRE_FALSE(context.hasPendingEvents());
+    REQUIRE(context.controllerEvents(74)->size() == 1);
+    REQUIRE(context.controllerEvents(74)->front().delay == 0);
+    REQUIRE(context.controllerEvents(74)->front().value == 0.5f);
+    REQUIRE(context.pressureEvents().size() == 1);
+    REQUIRE(context.pressureEvents().front().delay == 0);
+    REQUIRE(context.pressureEvents().front().value == 0.75f);
+
+    context.reset();
+    REQUIRE_FALSE(context.hasPendingEvents());
+}
+
 TEST_CASE("[Expression] Compatibility inheritance is explicit after zero writes")
 {
     sfz::MidiState state;
