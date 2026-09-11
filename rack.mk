@@ -17,10 +17,11 @@
 #
 #        # Include the sfizz library
 #        include dep/sfizz/rack.mk
-#        CFLAGS += $(SFIZZ_C_FLAGS)
-#        CXXFLAGS += $(SFIZZ_CXX_FLAGS)
 #        LDFLAGS += $(SFIZZ_LINK_FLAGS)
 #        $(TARGET): $(SFIZZ_TARGET)
+#
+#    rack.mk applies SFIZZ_C_FLAGS and SFIZZ_CXX_FLAGS only to sfizz objects,
+#    keeping its private dependency paths out of the plugin's own sources.
 #
 # 3. In the file `Makefile`,
 #
@@ -64,11 +65,11 @@ ifeq ($(SFIZZ_CPU_I386_OR_X86_64),1)
 
 $(SFIZZ_BUILD_DIR)/%SSE.cpp.o: $(SFIZZ_DIR)/%SSE.cpp
 	-@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CXXFLAGS) -msse2 -c -o $@ $<
+	$(CXX) $(SFIZZ_CXX_FLAGS) $(CXXFLAGS) -msse2 -c -o $@ $<
 
 $(SFIZZ_BUILD_DIR)/%AVX.cpp.o: $(SFIZZ_DIR)/%AVX.cpp
 	-@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CXXFLAGS) -mavx -c -o $@ $<
+	$(CXX) $(SFIZZ_CXX_FLAGS) $(CXXFLAGS) -mavx -c -o $@ $<
 
 endif
 
@@ -76,14 +77,14 @@ endif
 
 $(SFIZZ_BUILD_DIR)/%.cpp.o: $(SFIZZ_DIR)/%.cpp
 	-@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+	$(CXX) $(SFIZZ_CXX_FLAGS) $(CXXFLAGS) -c -o $@ $<
 
 $(SFIZZ_BUILD_DIR)/%.cc.o: $(SFIZZ_DIR)/%.cc
 	-@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+	$(CXX) $(SFIZZ_CXX_FLAGS) $(CXXFLAGS) -c -o $@ $<
 
 $(SFIZZ_BUILD_DIR)/%.c.o: $(SFIZZ_DIR)/%.c
 	-@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CFLAGS) -c -o $@ $<
+	$(CC) $(SFIZZ_C_FLAGS) $(CFLAGS) -c -o $@ $<
 
 -include $(SFIZZ_OBJECTS:%.o=%.d)

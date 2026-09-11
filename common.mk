@@ -10,7 +10,11 @@ SFIZZ_USE_SNDFILE ?= 0
 
 ###
 
+ifdef CROSS_COMPILE
+SFIZZ_MACHINE := $(CROSS_COMPILE)
+else
 SFIZZ_MACHINE := $(shell $(CC) -dumpmachine)
+endif
 SFIZZ_PROCESSOR := $(firstword $(subst -, ,$(SFIZZ_MACHINE)))
 
 ifneq (,$(filter i%86,$(SFIZZ_PROCESSOR)))
@@ -83,6 +87,8 @@ SFIZZ_SOURCES = \
 	src/sfizz/effects/Strings.cpp \
 	src/sfizz/effects/Width.cpp \
 	src/sfizz/EQPool.cpp \
+	src/sfizz/ExpressionContext.cpp \
+	src/sfizz/ExpressionEventDispatcher.cpp \
 	src/sfizz/FileId.cpp \
 	src/sfizz/FileMetadata.cpp \
 	src/sfizz/FilePool.cpp \
@@ -95,7 +101,9 @@ SFIZZ_SOURCES = \
 	src/sfizz/LFODescription.cpp \
 	src/sfizz/Messaging.cpp \
 	src/sfizz/Metronome.cpp \
+	src/sfizz/MidiInputAdapter.cpp \
 	src/sfizz/MidiState.cpp \
+	src/sfizz/NoteRegistry.cpp \
 	src/sfizz/OpcodeCleanup.cpp \
 	src/sfizz/Opcode.cpp \
 	src/sfizz/Oversampler.cpp \
@@ -242,6 +250,12 @@ SFIZZ_CXX_FLAGS += -I$(SFIZZ_DIR)/external/atomic_queue/include
 # ghc::filesystem dependency
 
 SFIZZ_CXX_FLAGS += -I$(SFIZZ_DIR)/external/filesystem/include
+ifdef SFIZZ_OS_APPLE
+# Xcode 16 no longer defines this compatibility macro from the deployment
+# target. ghc::fs_std would otherwise select std::filesystem even though Rack
+# supports macOS versions where libc++ does not provide it.
+SFIZZ_CXX_FLAGS += -D__MAC_OS_X_VERSION_MIN_REQUIRED=1090
+endif
 
 # invoke.hpp dependency
 
@@ -421,6 +435,9 @@ endif
 
 ### OpenMP dependency
 
+SFIZZ_USE_OPENMP ?= 0
+ifeq ($(SFIZZ_USE_OPENMP),1)
 SFIZZ_C_FLAGS += -fopenmp
 SFIZZ_CXX_FLAGS += -fopenmp
 SFIZZ_LINK_FLAGS += -fopenmp
+endif

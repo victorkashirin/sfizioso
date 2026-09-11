@@ -1952,6 +1952,26 @@ void Synth::hdPitchWheel(int delay, int channel, float normalizedPitch) noexcept
         normalizedPitch, false);
 }
 
+void Synth::hdNotePitch(int delay, int channel, float semitones) noexcept
+{
+    ASSERT(channel >= 0 && channel < 16);
+    Impl& impl = *impl_;
+    if (!impl.midiInputAdapter_.rack16Enabled())
+        return;
+
+    ScopedTiming logger { impl.dispatchDuration_, ScopedTiming::Operation::addToDuration };
+    const SourceAddress source = SourceAddress::fromMidi1(channel);
+    const AddressedNoteExpressionEvent addressed {
+        source,
+        -1,
+        { },
+        { ExpressionTarget::channel(source), ExpressionEventKind::Pitch,
+            { }, delay, -1, semitones },
+    };
+    dispatchAddressedNoteExpression(
+        impl.resources_.getMidiState(), impl.noteRegistry_, addressed);
+}
+
 void Synth::programChange(int delay, int program) noexcept
 {
     ASSERT(program >= 0 && program <= 127);
@@ -2081,6 +2101,8 @@ void Synth::setMPEEnabled(bool enabled) noexcept
     Impl& impl = *impl_;
     const bool wasEnabled = impl.midiInputAdapter_.mpeEnabled();
     impl.midiInputAdapter_.setMpeEnabled(enabled);
+    if (enabled)
+        impl.midiInputAdapter_.setRack16Enabled(false);
     // On the MPE on→off transition, flush active voices. Voices triggered
     // while MPE was enabled carry triggerChannel_ > 0, and after the flip
     // all subsequent *MPE / legacy calls normalize channel to 0 — so
@@ -2095,6 +2117,22 @@ void Synth::setMPEEnabled(bool enabled) noexcept
 bool Synth::getMPEEnabled() const noexcept
 {
     return impl_->midiInputAdapter_.mpeEnabled();
+}
+
+void Synth::setRack16Enabled(bool enabled) noexcept
+{
+    Impl& impl = *impl_;
+    const bool wasMpeEnabled = impl.midiInputAdapter_.mpeEnabled();
+    if (enabled)
+        impl.midiInputAdapter_.setMpeEnabled(false);
+    impl.midiInputAdapter_.setRack16Enabled(enabled);
+    if (wasMpeEnabled && enabled)
+        allSoundOff();
+}
+
+bool Synth::getRack16Enabled() const noexcept
+{
+    return impl_->midiInputAdapter_.rack16Enabled();
 }
 
 void Synth::setMPEPitchBendRange(float masterSemitones, float perNoteSemitones) noexcept

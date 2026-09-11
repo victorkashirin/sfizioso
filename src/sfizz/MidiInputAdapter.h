@@ -54,6 +54,9 @@ public:
     void setMpeEnabled(bool enabled) noexcept { mpeEnabled_ = enabled; }
     bool mpeEnabled() const noexcept { return mpeEnabled_; }
 
+    void setRack16Enabled(bool enabled) noexcept { rack16Enabled_ = enabled; }
+    bool rack16Enabled() const noexcept { return rack16Enabled_; }
+
     void setPitchBendRange(float managerSemitones, float memberSemitones) noexcept;
     float managerPitchBendRange() const noexcept { return managerPitchBendRange_; }
     float memberPitchBendRange() const noexcept { return memberPitchBendRange_; }
@@ -114,6 +117,7 @@ private:
     std::array<RpnParserState, 16> rpnParsers_ { };
     std::array<MemberSeed, 16> memberSeeds_ { };
     bool mpeEnabled_ { false };
+    bool rack16Enabled_ { false };
     float managerPitchBendRange_ { 2.0f };
     float memberPitchBendRange_ { 48.0f };
     bool managerBendAutoConfigEnabled_ { true };

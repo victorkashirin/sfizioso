@@ -735,6 +735,13 @@ public:
     void pitchWheel(int delay, int channel, int pitch) noexcept;
     /** @brief High-precision pitch bend on a specific MIDI channel. */
     void hdPitchWheel(int delay, int channel, float pitch) noexcept;
+    /**
+     * @brief Direct semitone pitch offset for active note instances owned by
+     * a source channel while the Rack-16 profile is enabled.
+     *
+     * This does not use the instrument's bend_up/bend_down opcodes.
+     */
+    void hdNotePitch(int delay, int channel, float semitones) noexcept;
     /** @brief Send a channel aftertouch event on a specific MIDI channel. */
     void channelAftertouch(int delay, int channel, int aftertouch) noexcept;
     /** @brief High-precision channel aftertouch on a specific MIDI channel. */
@@ -752,6 +759,14 @@ public:
     void setMPEEnabled(bool enabled) noexcept;
     /** @brief Get the current MPE mode flag. */
     bool getMPEEnabled() const noexcept;
+    /**
+     * @brief Enable the non-MPE Rack-16 expression profile.
+     *
+     * Source channels 0..15 remain independent note owners and none is a
+     * Manager channel. Enabling Rack-16 disables Lower-Zone MPE.
+     */
+    void setRack16Enabled(bool enabled) noexcept;
+    bool getRack16Enabled() const noexcept;
     /**
      * @brief Set the MPE pitch bend range, in semitones (master / per-note).
      * MPE 1.0 conventions: master 2 semitones, per-note 48 semitones.

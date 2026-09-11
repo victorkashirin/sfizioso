@@ -600,6 +600,15 @@ public:
      */
     void hdPitchWheel(int delay, int channel, float normalizedPitch) noexcept;
     /**
+     * @brief Direct semitone pitch offset for active notes owned by a source
+     * channel in the Rack-16 profile.
+     *
+     * Unlike pitchWheel(), this bypasses region bend_up/bend_down settings.
+     * The resolved event is copied into each matching note-instance context,
+     * so released voices retain their last value when a channel is reused.
+     */
+    void hdNotePitch(int delay, int channel, float semitones) noexcept;
+    /**
      * @brief Send a channel aftertouch event on a specific MIDI channel.
      */
     void channelAftertouch(int delay, int channel, int aftertouch) noexcept;
@@ -627,6 +636,16 @@ public:
      * @brief Get whether MPE mode is currently enabled.
      */
     bool getMPEEnabled() const noexcept;
+
+    /**
+     * @brief Enable the non-MPE Rack-16 expression profile.
+     *
+     * All 16 MIDI source channels are independent note owners. There is no
+     * Manager channel and no MPE message filtering. Enabling this profile
+     * disables Lower-Zone MPE; enabling MPE disables this profile.
+     */
+    void setRack16Enabled(bool enabled) noexcept;
+    bool getRack16Enabled() const noexcept;
 
     /**
      * @brief Set the MPE pitch-bend range, in semitones. MPE 1.0 conventions:

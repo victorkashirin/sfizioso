@@ -290,6 +290,11 @@ void sfz::Sfizz::hdPitchWheel(int delay, int channel, float pitch) noexcept
     synth->synth.hdPitchWheel(delay, channel, pitch);
 }
 
+void sfz::Sfizz::hdNotePitch(int delay, int channel, float semitones) noexcept
+{
+    synth->synth.hdNotePitch(delay, channel, semitones);
+}
+
 void sfz::Sfizz::channelAftertouch(int delay, int channel, int aftertouch) noexcept
 {
     synth->synth.channelAftertouch(delay, channel, aftertouch);
@@ -318,6 +323,16 @@ void sfz::Sfizz::setMPEEnabled(bool enabled) noexcept
 bool sfz::Sfizz::getMPEEnabled() const noexcept
 {
     return synth->synth.getMPEEnabled();
+}
+
+void sfz::Sfizz::setRack16Enabled(bool enabled) noexcept
+{
+    synth->synth.setRack16Enabled(enabled);
+}
+
+bool sfz::Sfizz::getRack16Enabled() const noexcept
+{
+    return synth->synth.getRack16Enabled();
 }
 
 void sfz::Sfizz::setMPEPitchBendRange(float masterSemitones, float perNoteSemitones) noexcept

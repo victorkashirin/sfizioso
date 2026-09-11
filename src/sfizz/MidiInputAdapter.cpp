@@ -18,6 +18,8 @@ ExpressionTarget MidiInputAdapter::profileTarget(SourceAddress source) const noe
 
 ExpressionTarget MidiInputAdapter::noteBroadTarget(SourceAddress source) const noexcept
 {
+    if (rack16Enabled_)
+        return ExpressionTarget::channel(source);
     return mpeEnabled_ && source.group == 0
         ? ExpressionTarget::zone(0)
         : ExpressionTarget::global();
@@ -178,7 +180,11 @@ void MidiInputAdapter::observeRpnControl(
         if (state.nrpnMode || state.selectedRpn == RpnParserState::nullRpn)
             return;
         if (state.selectedRpn == 6) {
-            if (source.channel == 0)
+            // Rack-16 is selected explicitly by the host. Do not let an
+            // incoming MPE Configuration Message create an impossible state
+            // where both profiles are active; explicit profile changes go
+            // through Synth so their voice-transition policy is applied.
+            if (source.channel == 0 && !rack16Enabled_)
                 mpeEnabled_ = data7 >= 1 && data7 <= 15;
         } else if (state.selectedRpn == 0) {
             if (source.channel == 0) {
