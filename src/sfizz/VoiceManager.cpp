@@ -156,6 +156,20 @@ void VoiceManager::checkPolyphony(const Region* region, int delay, const Trigger
     checkEnginePolyphony(delay, preferredChannel);
 }
 
+void VoiceManager::chokeSourceTails(SourceAddress source, int delay,
+    bool includeHeldVoices) noexcept
+{
+    for (Voice* voice : activeVoices_) {
+        const TriggerEvent& event = voice->getTriggerEvent();
+        if (event.source != source)
+            continue;
+        const bool isTail = event.type == TriggerEventType::NoteOff
+            || voice->noteIsOff() || voice->offedOrFree() || voice->released();
+        if (includeHeldVoices || isTail)
+            voice->off(delay, true);
+    }
+}
+
 Voice* VoiceManager::findFreeVoice() noexcept
 {
     Voice* freeVoice = nullptr;

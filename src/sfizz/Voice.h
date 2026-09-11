@@ -224,6 +224,8 @@ public:
      * @return false
      */
     bool released() const noexcept;
+    /** @brief Whether this voice has received its matching physical Note Off. */
+    bool noteIsOff() const noexcept;
     /**
      * @brief Compatibility/diagnostic view of the former MPE channel gate.
      *

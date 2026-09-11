@@ -1858,6 +1858,12 @@ bool Voice::released() const noexcept
     return impl.released();
 }
 
+bool Voice::noteIsOff() const noexcept
+{
+    const Impl& impl = *impl_;
+    return impl.noteIsOff_;
+}
+
 int Voice::expressionChannel() const noexcept
 {
     Impl& impl = *impl_;

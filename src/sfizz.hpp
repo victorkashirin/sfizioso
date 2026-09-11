@@ -719,6 +719,13 @@ public:
     void noteOff(int delay, int channel, int noteNumber, int velocity) noexcept;
     /** @brief High-precision note off on a specific MIDI channel. */
     void hdNoteOff(int delay, int channel, int noteNumber, float velocity) noexcept;
+    /** @brief Fast-release voices owned by a source channel.
+     *
+     * With includeHeldVoices false, only release-triggered, physically
+     * released, envelope-released, or already-offed voices are affected.
+     */
+    void chokeSourceTails(int delay, int channel,
+        bool includeHeldVoices) noexcept;
     /** @brief Send a CC event on a specific MIDI channel (0..15). */
     void cc(int delay, int channel, int ccNumber, int ccValue) noexcept;
     /** @brief High-precision CC on a specific MIDI channel. */

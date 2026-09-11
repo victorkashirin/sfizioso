@@ -1362,6 +1362,16 @@ void Synth::hdNoteOn(int delay, int channel, int noteNumber, float normalizedVel
         delay, source, channel, noteNumber, normalizedVelocity, noteId);
 }
 
+void Synth::chokeSourceTails(int delay, int channel,
+    bool includeHeldVoices) noexcept
+{
+    ASSERT(channel >= 0 && channel < 16);
+    Impl& impl = *impl_;
+    ScopedTiming logger { impl.dispatchDuration_, ScopedTiming::Operation::addToDuration };
+    impl.voiceManager_.chokeSourceTails(
+        SourceAddress::fromMidi1(channel), delay, includeHeldVoices);
+}
+
 void Synth::noteOff(int delay, int noteNumber, int velocity) noexcept
 {
     const float normalizedVelocity = normalizeVelocity(velocity);

@@ -265,6 +265,12 @@ void sfz::Sfizz::hdNoteOff(int delay, int channel, int noteNumber, float velocit
     synth->synth.hdNoteOff(delay, channel, noteNumber, velocity);
 }
 
+void sfz::Sfizz::chokeSourceTails(int delay, int channel,
+    bool includeHeldVoices) noexcept
+{
+    synth->synth.chokeSourceTails(delay, channel, includeHeldVoices);
+}
+
 void sfz::Sfizz::cc(int delay, int channel, int ccNumber, int ccValue) noexcept
 {
     synth->synth.cc(delay, channel, ccNumber, ccValue);

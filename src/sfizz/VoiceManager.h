@@ -110,6 +110,10 @@ struct VoiceManager final : public Voice::StateListener
      */
     void checkPolyphony(const Region* region, int delay, const TriggerEvent& triggerEvent, int preferredChannel = -1) noexcept;
 
+    /** @brief Fast-release source voices, optionally including held voices. */
+    void chokeSourceTails(SourceAddress source, int delay,
+        bool includeHeldVoices) noexcept;
+
     /**
      * @brief Get the number of active voices
      *
