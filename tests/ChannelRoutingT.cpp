@@ -770,6 +770,50 @@ TEST_CASE("[Channel routing] public C++ wrapper preserves source routing with MP
     REQUIRE(synth.getNumActiveVoices() == 1);
 }
 
+TEST_CASE("[Channel routing] public C++ wrapper renders isolated stereo source lanes")
+{
+    constexpr int sourceChannels = 16;
+    constexpr size_t frames = 256;
+    sfz::Sfizz synth;
+    synth.setSamplesPerBlock(static_cast<int>(frames));
+    synth.setRack16Enabled(true);
+    REQUIRE(synth.loadSfzString("wrapper_poly_output.sfz", R"(
+        <control> set_cc20=0
+        <region> sample=*sine ampeg_attack=0 volume=-48 volume_oncc20=48
+                 effect1=100
+        <effect> directtomain=0 fx1tomain=100 bus=fx1 type=lofi
+                 bitred=90 decim=10
+    )"));
+
+    synth.hdcc(0, 2, 20, 1.0f);
+    synth.hdcc(0, 7, 20, 0.0f);
+    synth.hdNoteOn(0, 2, 60, 1.0f);
+    synth.hdNoteOn(0, 7, 60, 1.0f);
+
+    std::array<std::vector<float>, 2 * sourceChannels> audio;
+    std::array<float*, 2 * sourceChannels> outputs {};
+    for (size_t channel = 0; channel < audio.size(); ++channel) {
+        audio[channel].resize(frames);
+        outputs[channel] = audio[channel].data();
+    }
+    synth.renderBlockBySourceChannel(outputs.data(), frames, sourceChannels);
+
+    const auto energy = [&audio](int source) {
+        double sum = 0.0;
+        for (float sample : audio[2 * source])
+            sum += static_cast<double>(sample) * sample;
+        for (float sample : audio[2 * source + 1])
+            sum += static_cast<double>(sample) * sample;
+        return sum;
+    };
+    REQUIRE(energy(2) > 1.0e-4);
+    REQUIRE(energy(2) > 100.0 * energy(7));
+    for (int source = 0; source < sourceChannels; ++source) {
+        if (source != 2 && source != 7)
+            REQUIRE(energy(source) == Approx(0.0).margin(1.0e-12));
+    }
+}
+
 TEST_CASE("[Channel routing] public C API preserves source routing with MPE off")
 {
     sfizz_synth_t* synth = sfizz_create_synth();

@@ -734,6 +734,18 @@ public:
     void renderBlock(AudioSpan<float> buffer) noexcept;
 
     /**
+     * @brief Render one stereo output pair per original MIDI source channel.
+     *
+     * Voice audio is copied after per-voice processing and before the shared
+     * SFZ effect buses. Channel pair N therefore contains only voices whose
+     * TriggerEvent source channel is N. Shared effects are still processed so
+     * their state remains continuous if the host returns to renderBlock().
+     *
+     * @param buffer an even-channel buffer containing stereo source pairs
+     */
+    void renderBlockBySourceChannel(AudioSpan<float> buffer) noexcept;
+
+    /**
      * @brief Get the number of active voices
      *
      * @return int
@@ -926,6 +938,9 @@ public:
     struct Impl;
 
 private:
+    void renderBlockInternal(AudioSpan<float> buffer,
+        bool sourceChannelOutputs) noexcept;
+
     std::unique_ptr<Impl> impl_;
 
     LEAK_DETECTOR(Synth);

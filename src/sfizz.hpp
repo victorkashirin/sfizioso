@@ -927,6 +927,20 @@ public:
     void renderBlock(float** buffers, size_t numFrames, int numOutputs = 1) noexcept;
 
     /**
+     * @brief Render one stereo pair per original MIDI source channel.
+     *
+     * Buffers are ordered L0, R0, L1, R1, and so on. The rendered signals
+     * include all per-voice SFZ processing but bypass shared <effect> blocks.
+     * Shared effects continue processing internally to preserve their state.
+     *
+     * @param buffers the buffers receiving source-isolated stereo pairs.
+     * @param numFrames the number of stereo frames in the block.
+     * @param numSourceChannels the number of source channels, from 1 to 16.
+     */
+    void renderBlockBySourceChannel(float** buffers, size_t numFrames,
+        int numSourceChannels = 16) noexcept;
+
+    /**
      * @brief Return the number of active voices.
      * @since 0.2.0
      */

@@ -1151,6 +1151,17 @@ void Synth::setSampleRate(float sampleRate) noexcept
 
 void Synth::renderBlock(AudioSpan<float> buffer) noexcept
 {
+    renderBlockInternal(buffer, false);
+}
+
+void Synth::renderBlockBySourceChannel(AudioSpan<float> buffer) noexcept
+{
+    renderBlockInternal(buffer, true);
+}
+
+void Synth::renderBlockInternal(AudioSpan<float> buffer,
+    bool sourceChannelOutputs) noexcept
+{
     Impl& impl = *impl_;
     ScopedFTZ ftz;
     auto& callbackBreakdown = impl.callbackBreakdown_;
@@ -1186,11 +1197,20 @@ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
 
     auto tempSpan = bufferPool.getStereoBuffer(numFrames);
     auto tempMixSpan = bufferPool.getStereoBuffer(numFrames);
+    SpanHolder<AudioSpan<float>> discardedEffectSpan;
+    if (sourceChannelOutputs)
+        discardedEffectSpan = bufferPool.getStereoBuffer(numFrames);
     auto rampSpan = bufferPool.getBuffer(numFrames);
-    if (!tempSpan || !tempMixSpan || !rampSpan) {
+    if (!tempSpan || !tempMixSpan || !rampSpan
+        || (sourceChannelOutputs && !discardedEffectSpan)) {
         DBG("[sfizz] Could not get a temporary buffer; exiting callback... ");
         return;
     }
+    AudioSpan<float> effectOutput = sourceChannelOutputs
+        ? *discardedEffectSpan
+        : buffer;
+    if (sourceChannelOutputs)
+        effectOutput.fill(0.0f);
 
     ModMatrix& mm = impl.resources_.getModMatrix();
     mm.beginCycle(numFrames);
@@ -1234,6 +1254,15 @@ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
                 const auto& effectBuses = impl.getEffectBusesForOutput(region->output);
 
                 voice.renderBlock(*tempSpan);
+                if (sourceChannelOutputs) {
+                    const size_t sourceChannel =
+                        voice.getTriggerEvent().source.channel;
+                    const size_t outputStart = 2 * sourceChannel;
+                    if (outputStart + 1 < buffer.getNumChannels()) {
+                        auto sourceOutput = buffer.getStereoSpan(outputStart);
+                        sourceOutput.add(*tempSpan);
+                    }
+                }
                 for (size_t i = 0, n = effectBuses.size(); i < n; ++i) {
                     if (auto& bus = effectBuses[i]) {
                         float addGain = region->getGainToEffectBus(i);
@@ -1258,11 +1287,11 @@ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
         //    without any <effect>, the signal is just going to flow through it.
         ScopedTiming logger { callbackBreakdown.effects, ScopedTiming::Operation::addToDuration };
 
-        const int numChannels = static_cast<int>(buffer.getNumChannels());
+        const int numChannels = static_cast<int>(effectOutput.getNumChannels());
         for (int i = 0; i < impl.numOutputs_; ++i) {
             tempMixSpan->fill(0.0f);
             const auto outputStart = numChannels == 0 ? 0 : (2 * i) % numChannels;
-            auto outputSpan = buffer.getStereoSpan(outputStart);
+            auto outputSpan = effectOutput.getStereoSpan(outputStart);
             const auto& effectBuses = impl.getEffectBusesForOutput(i);
             for (auto& bus : effectBuses) {
                 if (bus) {
@@ -1306,10 +1335,10 @@ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
         midiState.advanceTime(buffer.getNumFrames());
     }
 
-    ASSERT(!hasNanInf(buffer.getConstSpan(0)));
-    ASSERT(!hasNanInf(buffer.getConstSpan(1)));
-    SFIZZ_CHECK(isReasonableAudio(buffer.getConstSpan(0)));
-    SFIZZ_CHECK(isReasonableAudio(buffer.getConstSpan(1)));
+    for (size_t channel = 0; channel < buffer.getNumChannels(); ++channel) {
+        ASSERT(!hasNanInf(buffer.getConstSpan(channel)));
+        SFIZZ_CHECK(isReasonableAudio(buffer.getConstSpan(channel)));
+    }
 }
 
 void Synth::noteOn(int delay, int noteNumber, int velocity) noexcept

@@ -417,6 +417,20 @@ void sfz::Sfizz::renderBlock(float** buffers, size_t numSamples, int numOutputs)
     synth->synth.renderBlock(bufferSpan);
 }
 
+void sfz::Sfizz::renderBlockBySourceChannel(float** buffers, size_t numSamples,
+    int numSourceChannels) noexcept
+{
+    if (!buffers || numSourceChannels < 1 || numSourceChannels > 16)
+        return;
+    for (int channel = 0; channel < 2 * numSourceChannels; ++channel) {
+        if (!buffers[channel])
+            return;
+    }
+    sfz::AudioSpan<float> bufferSpan { buffers,
+        static_cast<size_t>(numSourceChannels * 2), 0, numSamples };
+    synth->synth.renderBlockBySourceChannel(bufferSpan);
+}
+
 int sfz::Sfizz::getNumActiveVoices() const noexcept
 {
     return synth->synth.getNumActiveVoices();
