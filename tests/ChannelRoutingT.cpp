@@ -23,6 +23,8 @@
 #include "TestHelpers.h"
 #include "catch2/catch.hpp"
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -61,6 +63,40 @@ std::vector<int> playingSourceChannels(const sfz::Synth& synth)
         channels.push_back(voice->getTriggerEvent().source.channel);
     std::sort(channels.begin(), channels.end());
     return channels;
+}
+
+using SourceEnergies = std::array<double, 16>;
+
+SourceEnergies renderSourceEnergies(sfz::Synth& synth)
+{
+    sfz::AudioBuffer<float> buffer {
+        32, static_cast<unsigned>(synth.getSamplesPerBlock())
+    };
+    buffer.clear();
+    synth.renderBlockBySourceChannel(buffer);
+
+    SourceEnergies energies {};
+    for (size_t source = 0; source < energies.size(); ++source) {
+        for (float sample : buffer.getConstSpan(2 * source))
+            energies[source] += static_cast<double>(sample) * sample;
+        for (float sample : buffer.getConstSpan(2 * source + 1))
+            energies[source] += static_cast<double>(sample) * sample;
+    }
+    return energies;
+}
+
+void requireOnlySources(const SourceEnergies& energies,
+    std::initializer_list<size_t> audibleSources)
+{
+    for (size_t source = 0; source < energies.size(); ++source) {
+        CAPTURE(source, energies[source]);
+        const bool audible = std::find(audibleSources.begin(),
+            audibleSources.end(), source) != audibleSources.end();
+        if (audible)
+            REQUIRE(energies[source] > 1.0e-8);
+        else
+            REQUIRE(energies[source] == Approx(0.0).margin(1.0e-6));
+    }
 }
 
 } // namespace
@@ -812,6 +848,107 @@ TEST_CASE("[Channel routing] public C++ wrapper renders isolated stereo source l
         if (source != 2 && source != 7)
             REQUIRE(energy(source) == Approx(0.0).margin(1.0e-12));
     }
+}
+
+TEST_CASE("[Channel routing] source outputs preserve pedal and release-tail ownership")
+{
+    const int pedal = GENERATE(64, 66);
+    CAPTURE(pedal);
+    sfz::Synth synth;
+    synth.setRack16Enabled(true);
+    REQUIRE(synth.loadSfzString(fs::current_path() / "source_output_pedals.sfz", R"(
+        <region> lochan=3 hichan=3 sample=*sine ampeg_attack=0
+                 ampeg_decay=0 ampeg_sustain=100 ampeg_release=0.001
+        <region> lochan=8 hichan=8 sample=*sine ampeg_attack=0
+                 ampeg_decay=0 ampeg_sustain=100 ampeg_release=0.001
+    )"));
+
+    synth.noteOn(0, 2, 60, 100);
+    synth.noteOn(0, 7, 67, 100);
+    requireOnlySources(renderSourceEnergies(synth), { 2, 7 });
+    synth.cc(0, 2, pedal, 127);
+    synth.cc(0, 7, pedal, 127);
+    renderSourceEnergies(synth);
+    synth.noteOff(0, 2, 60, 0);
+    synth.noteOff(0, 7, 67, 0);
+    requireOnlySources(renderSourceEnergies(synth), { 2, 7 });
+
+    synth.cc(0, 2, pedal, 0);
+    renderSourceEnergies(synth);
+    requireOnlySources(renderSourceEnergies(synth), { 7 });
+    synth.cc(0, 7, pedal, 0);
+    renderSourceEnergies(synth);
+    requireOnlySources(renderSourceEnergies(synth), {});
+}
+
+TEST_CASE("[Channel routing] source outputs retain shared off-group state")
+{
+    sfz::Synth synth;
+    synth.setRack16Enabled(true);
+    REQUIRE(synth.loadSfzString(fs::current_path() / "source_output_offgroup.sfz", R"(
+        <region> key=60 group=1 off_by=2 off_mode=fast sample=*sine
+                 ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+        <region> key=61 group=2 sample=*saw
+                 ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+    )"));
+
+    synth.noteOn(0, 2, 60, 100);
+    requireOnlySources(renderSourceEnergies(synth), { 2 });
+    synth.noteOn(0, 7, 61, 100);
+    renderSourceEnergies(synth);
+    requireOnlySources(renderSourceEnergies(synth), { 7 });
+    REQUIRE(playingSourceChannels(synth) == std::vector<int> { 7 });
+}
+
+TEST_CASE("[Channel routing] source outputs retain sequence and random selection")
+{
+    SECTION("unrestricted sequence state is shared across sources")
+    {
+        sfz::Synth synth;
+        synth.setRack16Enabled(true);
+        REQUIRE(synth.loadSfzString(fs::current_path() / "source_output_sequence.sfz", R"(
+            <region> seq_length=2 seq_position=1 sample=*sine
+                     ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+        )"));
+        synth.noteOn(0, 2, 60, 100);
+        requireOnlySources(renderSourceEnergies(synth), { 2 });
+        synth.noteOn(0, 7, 67, 100);
+        requireOnlySources(renderSourceEnergies(synth), { 2 });
+        REQUIRE(playingSourceChannels(synth) == std::vector<int> { 2 });
+    }
+
+    SECTION("randomly selected voices remain on their triggering source")
+    {
+        sfz::Synth synth;
+        synth.setRack16Enabled(true);
+        REQUIRE(synth.loadSfzString(fs::current_path() / "source_output_random.sfz", R"(
+            <region> lorand=0 hirand=0.5 sample=*sine
+                     ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+            <region> lorand=0.5 hirand=1 sample=*saw
+                     ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+        )"));
+        synth.noteOn(0, 2, 60, 100);
+        synth.noteOn(0, 7, 67, 100);
+        requireOnlySources(renderSourceEnergies(synth), { 2, 7 });
+        REQUIRE(playingSourceChannels(synth) == std::vector<int> { 2, 7 });
+    }
+}
+
+TEST_CASE("[Channel routing] source outputs follow shared voice stealing")
+{
+    sfz::Synth synth;
+    synth.setNumVoices(1);
+    synth.setRack16Enabled(true);
+    REQUIRE(synth.loadSfzString(fs::current_path() / "source_output_stealing.sfz", R"(
+        <region> sample=*sine ampeg_attack=0 ampeg_decay=0 ampeg_sustain=100
+    )"));
+
+    synth.noteOn(0, 2, 60, 100);
+    requireOnlySources(renderSourceEnergies(synth), { 2 });
+    synth.noteOn(0, 7, 67, 100);
+    renderSourceEnergies(synth);
+    REQUIRE(synth.getNumActiveVoices() <= 1);
+    requireOnlySources(renderSourceEnergies(synth), { 7 });
 }
 
 TEST_CASE("[Channel routing] public C API preserves source routing with MPE off")
