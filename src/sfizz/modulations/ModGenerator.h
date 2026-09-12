@@ -32,6 +32,15 @@ public:
     virtual void setSamplesPerBlock(unsigned count) { (void)count; }
 
     /**
+     * @brief Prepare a source before realtime voice initialization begins.
+     *
+     * This is called from ModMatrix::init() on the loading thread after all
+     * sources have been registered. Generators can use it to reserve bounded
+     * per-source realtime state.
+     */
+    virtual void prepare(const ModKey& sourceKey) { (void)sourceKey; }
+
+    /**
      * @brief Initialize the generator.
      *
      * @param sourceKey identifier of the source to initialize

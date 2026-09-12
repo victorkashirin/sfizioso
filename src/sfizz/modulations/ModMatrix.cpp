@@ -237,6 +237,7 @@ void ModMatrix::init()
 
     for (unsigned i = 0; i < impl.sources_.size(); ++i) {
         Impl::Source& source = impl.sources_[i];
+        source.gen->prepare(source.key);
         const int flags = source.key.flags();
         if (flags & kModIsPerCycle) {
             ASSERT(!source.key.region());

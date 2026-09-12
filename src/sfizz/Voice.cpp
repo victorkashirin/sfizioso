@@ -36,6 +36,7 @@
 #include "utility/Timing.h"
 #include <absl/algorithm/container.h>
 #include <absl/types/span.h>
+#include <bitset>
 #include <random>
 
 namespace sfz {
@@ -239,6 +240,9 @@ struct Voice::Impl
     EventVector releasedNotePitch_;
     EventVector releasedNotePressure_;
     EventVector releasedNoteTimbre_;
+    std::array<float, config::numCCs> releasedNoteControllerValues_ {};
+    std::bitset<config::numCCs> releasedNoteControllers_;
+    EventVector releasedNoteControllerScratch_;
     EventVector combinedPressure_;
     EventVector combinedTimbre_;
     void freezeNoteExpression(int delay) noexcept;
@@ -394,6 +398,7 @@ Voice::Impl::Impl(int voiceNumber, Resources& resources)
     releasedNotePitch_.reserve(MidiState::noteTimelineEvents);
     releasedNotePressure_.reserve(MidiState::noteTimelineEvents);
     releasedNoteTimbre_.reserve(MidiState::noteTimelineEvents);
+    releasedNoteControllerScratch_.reserve(1);
     combinedPressure_.reserve(samplesPerBlock_ + 1);
     combinedTimbre_.reserve(samplesPerBlock_ + 1);
     for (unsigned i = 0; i < config::filtersPerVoice; ++i)
@@ -445,6 +450,7 @@ bool Voice::startVoice(Layer* layer, int delay, const TriggerEvent& event) noexc
     impl.releasedNotePitch_.clear();
     impl.releasedNotePressure_.clear();
     impl.releasedNoteTimbre_.clear();
+    impl.releasedNoteControllers_.reset();
     if (event.type == TriggerEventType::NoteOff)
         impl.freezeNoteExpression(delay);
     impl.triggerChannel_ = event.channel;
@@ -677,10 +683,11 @@ void Voice::Impl::off(int delay, bool fast) noexcept
 
 void Voice::Impl::freezeNoteExpression(int delay) noexcept
 {
-    const ExpressionContext* context = resources_.getMidiState().getExpressionContext(
+    const MidiState& midiState = resources_.getMidiState();
+    const ExpressionContext* note = midiState.getExpressionContext(
         ExpressionTarget::note(triggerEvent_.noteId));
-    if (!context)
-        return;
+    const ExpressionContext* broad = midiState.getExpressionContext(
+        triggerEvent_.expressionTarget);
 
     auto freeze = [delay](const EventVector& events, EventVector& snapshot) {
         if (!snapshot.empty())
@@ -692,11 +699,35 @@ void Voice::Impl::freezeNoteExpression(int delay) noexcept
             snapshot.push_back(event);
         }
     };
-    if (context->hasPitch()) freeze(context->pitchEvents(), releasedNotePitch_);
-    if (context->hasPressure()) freeze(context->pressureEvents(), releasedNotePressure_);
-    if (context->hasController(74)) {
-        if (const auto* events = context->controllerEvents(74))
+    if (note && note->hasPitch())
+        freeze(note->pitchEvents(), releasedNotePitch_);
+    const ExpressionContext* pressure = note && note->hasPressure() ? note : broad;
+    if (pressure && pressure->hasPressure())
+        freeze(pressure->pressureEvents(), releasedNotePressure_);
+    const ExpressionContext* timbre = note && note->hasController(74) ? note : broad;
+    if (timbre && timbre->hasController(74)) {
+        if (const auto* events = timbre->controllerEvents(74))
             freeze(*events, releasedNoteTimbre_);
+    }
+    for (int cc = 0; cc < config::numCCs; ++cc) {
+        if (cc == 74)
+            continue;
+        const ExpressionContext* context = note && note->hasController(cc)
+            ? note
+            : broad;
+        if (!context || !context->hasController(cc))
+            continue;
+        const EventVector* events = context->controllerEvents(cc);
+        if (!events || events->empty())
+            continue;
+        float value = events->front().value;
+        for (const MidiEvent& event : *events) {
+            if (event.delay > delay)
+                break;
+            value = event.value;
+        }
+        releasedNoteControllerValues_[cc] = value;
+        releasedNoteControllers_.set(cc);
     }
 }
 
@@ -975,12 +1006,21 @@ const EventVector& Voice::Impl::controllerEvents(int cc) noexcept
     const auto target = triggerEvent_.expressionTarget;
     const auto noteId = triggerEvent_.noteId;
     const bool pressure = cc == ExtendedCCs::channelAftertouch;
+    const auto& frozen = pressure ? releasedNotePressure_ : releasedNoteTimbre_;
+    if (!pressure && cc != 74 && cc >= 0 && cc < config::numCCs
+        && releasedNoteControllers_.test(cc)) {
+        releasedNoteControllerScratch_.clear();
+        releasedNoteControllerScratch_.push_back(
+            { 0, releasedNoteControllerValues_[cc] });
+        return releasedNoteControllerScratch_;
+    }
+    if (target.scope == ExpressionScope::Channel && !frozen.empty())
+        return frozen;
     if (target.scope != ExpressionScope::Zone || (!pressure && cc != 74))
         return pressure ? state.getVoicePressureEvents(target, noteId)
                         : state.getVoiceCCEvents(target, noteId, cc);
 
     const EventVector* note = nullptr;
-    const auto& frozen = pressure ? releasedNotePressure_ : releasedNoteTimbre_;
     if (!frozen.empty()) note = &frozen;
     else if (const auto* context = state.getExpressionContext(ExpressionTarget::note(noteId))) {
         if (pressure && context->hasPressure()) note = &context->pressureEvents();

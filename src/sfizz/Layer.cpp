@@ -36,6 +36,7 @@ void Layer::initializeActivations()
     const Region& region = region_;
 
     keySwitched_ = !region.usesKeySwitches;
+    sourceKeySwitched_.fill(keySwitched_);
     previousKeySwitched_ = !region.usesPreviousKeySwitches;
     sequenceSwitched_ = !region.usesSequenceSwitches;
     pitchSwitched_ = true;
@@ -80,7 +81,11 @@ bool Layer::isSourceChannelEligible(int sourceChannel) const noexcept
 bool Layer::isSwitchedOn(SourceAddress source) const noexcept
 {
     if (!region_.isChannelRestricted()) {
-        return keySwitched_ && previousKeySwitched_ && sequenceSwitched_ && pitchSwitched_
+        const bool keySwitched = keyswitchPerSource_
+                && source.channel < sourceKeySwitched_.size()
+            ? sourceKeySwitched_[source.channel]
+            : keySwitched_;
+        return keySwitched && previousKeySwitched_ && sequenceSwitched_ && pitchSwitched_
             && programSwitched_ && bpmSwitched_ && aftertouchSwitched_ && ccSwitched_.all();
     }
 
@@ -361,10 +366,20 @@ void Layer::setKeySwitched(int sourceChannel, bool value) noexcept
 {
     if (!region_.isChannelRestricted()) {
         keySwitched_ = value;
+        if (keyswitchPerSource_ && sourceChannel >= 0
+            && sourceChannel < static_cast<int>(sourceKeySwitched_.size()))
+            sourceKeySwitched_[sourceChannel] = value;
         return;
     }
     if (isSourceChannelEligible(sourceChannel))
         (*sourceStates_)[sourceChannel].keySwitched = value;
+}
+
+void Layer::setKeyswitchPerSource(bool enabled) noexcept
+{
+    if (enabled && !keyswitchPerSource_)
+        sourceKeySwitched_.fill(keySwitched_);
+    keyswitchPerSource_ = enabled;
 }
 
 void Layer::setPreviousKeySwitched(int sourceChannel, bool value) noexcept

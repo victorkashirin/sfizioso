@@ -160,6 +160,7 @@ public:
     void registerProgramChange(int program) noexcept;
 
     void setKeySwitched(int sourceChannel, bool value) noexcept;
+    void setKeyswitchPerSource(bool enabled) noexcept;
     void setPreviousKeySwitched(int sourceChannel, bool value) noexcept;
     bool isCcSwitchedOn(int sourceChannel) const noexcept;
 
@@ -219,6 +220,8 @@ public:
 
     const MidiState& midiState_;
     bool keySwitched_ { };
+    bool keyswitchPerSource_ { false };
+    std::array<bool, 16> sourceKeySwitched_ {};
     bool previousKeySwitched_ { };
     bool sequenceSwitched_ { };
     bool pitchSwitched_ { };

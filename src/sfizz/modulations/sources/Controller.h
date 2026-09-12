@@ -19,6 +19,7 @@ public:
     ~ControllerSource();
     void setSampleRate(double sampleRate) override;
     void setSamplesPerBlock(unsigned count) override;
+    void prepare(const ModKey& sourceKey) override;
     void init(const ModKey& sourceKey, NumericId<Voice> voiceId, unsigned delay) override;
     void generate(const ModKey& sourceKey, NumericId<Voice> voiceId, absl::Span<float> buffer) override;
 
@@ -26,6 +27,7 @@ public:
      * @brief Reset the smoothers.
      */
     void resetSmoothers();
+    void clearSmoothers();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

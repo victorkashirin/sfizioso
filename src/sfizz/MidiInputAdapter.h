@@ -100,6 +100,11 @@ public:
     static bool isManagerOnlyControl(int ccNumber) noexcept;
 
 private:
+    bool usesPerNoteExpression(SourceAddress source) const noexcept
+    {
+        return rack16Enabled_ || isMember(source);
+    }
+
     bool isMember(SourceAddress source) const noexcept
     {
         return mpeEnabled_ && source.group == 0 && source.channel > 0

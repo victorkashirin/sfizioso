@@ -9,6 +9,8 @@ namespace sfz {
 
 ExpressionTarget MidiInputAdapter::profileTarget(SourceAddress source) const noexcept
 {
+    if (rack16Enabled_)
+        return ExpressionTarget::channel(source);
     if (!mpeEnabled_)
         return ExpressionTarget::global();
     if (source.channel == 0)
@@ -71,7 +73,7 @@ MidiExpressionRoute MidiInputAdapter::resolvePressure(
     MidiExpressionRoute route;
     route.event = { profileTarget(source), ExpressionEventKind::Pressure,
         { }, delay, -1, normalizedValue };
-    route.broadcastToActiveNotes = isMember(source);
+    route.broadcastToActiveNotes = usesPerNoteExpression(source);
     if (route.broadcastToActiveNotes) {
         MemberSeed& seed = memberSeeds_[source.channel];
         seed.pressure = normalizedValue;
@@ -87,7 +89,7 @@ MidiExpressionRoute MidiInputAdapter::resolveControl(
     route.event = { profileTarget(source), ExpressionEventKind::Control,
         ExpressionControlId::fromSfizzCC(ccNumber), delay, -1,
         normalizedValue };
-    route.broadcastToActiveNotes = isMember(source);
+    route.broadcastToActiveNotes = usesPerNoteExpression(source);
     if (route.broadcastToActiveNotes && ccNumber == 74) {
         MemberSeed& seed = memberSeeds_[source.channel];
         seed.timbre = normalizedValue;

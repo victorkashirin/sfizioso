@@ -32,6 +32,7 @@ void sfz::ModKey::calculateHash()
 
     switch (id()) {
     case sfz::ModId::Controller:
+    case sfz::ModId::PerVoiceController:
         k = hashNumber(p.cc, k);
         k = hashNumber(p.curve, k);
         k = hashNumber(p.smooth, k);

@@ -287,6 +287,7 @@ void Synth::Impl::clear()
     currentSet_ = nullptr;
     sets_.clear();
     layers_.clear();
+    genController_->clearSmoothers();
     resources_.clearNonState();
     rootPath_.clear();
     numGroups_ = 0;
@@ -742,6 +743,7 @@ void Synth::Impl::finalizeSfzLoad()
     while (currentRegionIndex < currentRegionCount) {
         Layer& layer = *layers_[currentRegionIndex];
         Region& region = layer.getRegion();
+        layer.setKeyswitchPerSource(midiInputAdapter_.rack16Enabled());
 
         absl::optional<FileInformation> fileInformation;
 
@@ -1000,6 +1002,21 @@ void Synth::Impl::finalizeSfzLoad()
         expressionControllers[cc] = currentUsedCCs_.test(cc);
     resources_.getMidiState().configureExpressionControls(
         expressionControllers);
+    if (midiInputAdapter_.rack16Enabled()) {
+        MidiState& midiState = resources_.getMidiState();
+        for (int source = 0; source < 16; ++source) {
+            const ExpressionTarget target = ExpressionTarget::channel(
+                SourceAddress::fromMidi1(source));
+            for (int cc = 0; cc < config::numCCs; ++cc) {
+                if (!expressionControllers[cc])
+                    continue;
+                midiState.expressionEvent({ target,
+                    ExpressionEventKind::Control,
+                    ExpressionControlId::fromSfizzCC(cc), 0, -1,
+                    midiState.getCCValue(cc) });
+            }
+        }
+    }
 
     // cache the set of keys assigned
     for (const LayerPtr& layerPtr : layers_) {
@@ -1787,7 +1804,11 @@ void Synth::Impl::dispatchExpression(const MidiExpressionRoute& route,
     SourceAddress source) noexcept
 {
     MidiState& midiState = resources_.getMidiState();
-    if (!route.broadcastToActiveNotes)
+    // Rack-16 retains one broad state per source channel so expression sent
+    // before a Note On seeds the next note. Active logical notes also receive
+    // their own copy below, which can then be frozen at physical Note Off.
+    if (!route.broadcastToActiveNotes
+        || route.event.target.scope == ExpressionScope::Channel)
         midiState.expressionEvent(route.event);
 
     if (route.broadcastToActiveNotes) {
@@ -2141,6 +2162,8 @@ void Synth::setRack16Enabled(bool enabled) noexcept
     if (enabled)
         impl.midiInputAdapter_.setMpeEnabled(false);
     impl.midiInputAdapter_.setRack16Enabled(enabled);
+    for (const Impl::LayerPtr& layer : impl.layers_)
+        layer->setKeyswitchPerSource(enabled);
     if (wasMpeEnabled && enabled)
         allSoundOff();
 }
@@ -2618,7 +2641,22 @@ void Synth::Impl::setupModMatrix()
             if (sourceKey.id() == ModId::Controller) {
                 ModKey::Parameters p = sourceKey.parameters();
                 p.step = (conn.sourceDepth <= 0.0f) ? 0.0f : (p.step / conn.sourceDepth);
-                sourceKey = ModKey::createCC(p.cc, p.curve, p.smooth, p.step);
+                // The traditional SFZ controller source is shared once per
+                // render cycle. Rack-16 gives every source channel its own
+                // expression stream, so make these sources voice-scoped and
+                // let ControllerSource resolve the triggering voice's lane.
+                sourceKey = midiInputAdapter_.rack16Enabled()
+                    ? ModKey(ModId::PerVoiceController, region.id, p)
+                    : ModKey::createCC(p.cc, p.curve, p.smooth, p.step);
+            }
+            else if (midiInputAdapter_.rack16Enabled()
+                && sourceKey.id() == ModId::ChannelAftertouch) {
+                // Native *_chanaft opcodes normally share one source per
+                // render cycle. Rack-16 pressure is lane-scoped, so route it
+                // through the voice-scoped extended-controller path too.
+                ModKey::Parameters p;
+                p.cc = ExtendedCCs::channelAftertouch;
+                sourceKey = ModKey(ModId::PerVoiceController, region.id, p);
             }
 
             switch (sourceKey.id()) {
@@ -2898,7 +2936,8 @@ void Synth::Impl::collectUsedCCsFromModulations(BitArray<config::numCCs>& usedCC
 
         bool visit(const ModKey& key) override
         {
-            if (key.id() == ModId::Controller)
+            if (key.id() == ModId::Controller
+                || key.id() == ModId::PerVoiceController)
                 used_.set(key.parameters().cc);
             return true;
         }
